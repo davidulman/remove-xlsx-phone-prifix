@@ -9,35 +9,52 @@ const processSheet = (sheet: XLSX.WorkSheet): string[] => {
     defval: '',
   }) as unknown[][];
 
-  return data
+  const getData = data
     .map((row: unknown[]) => {
       const cellValue = row[0];
-      const phoneNumber = cellValue?.toString().trim();
-      return phoneNumber?.replace('+972', '').replace(/\s|-/g, '');
+      let phoneNumber = cellValue?.toString().trim();
+      phoneNumber = phoneNumber?.replace('+972', '').replace(/\s|-/g, '');
+      phoneNumber = phoneNumber?.replace(/\u2066/g, '');
+
+      if (phoneNumber?.length === 9) {
+        return phoneNumber;
+      } else {
+        return null;
+      }
     })
-    .filter(Boolean) as string[]; // Filter out non-phone number entries
+    .filter(Boolean) as string[];
+
+  const newData = [...new Set(getData)];
+
+  return newData;
 };
 
-const processExcelFile = (filePath: string, csvFilePath: string) => {
-  const workbook = XLSX.readFile(filePath);
-  const stream = fs.createWriteStream(csvFilePath);
-  const csvStream = format({ headers: true });
+const saveToExcel = (processedData: string[], outputFilePath: string) => {
+  const newWorkbook = XLSX.utils.book_new();
+  const newWorksheet = XLSX.utils.aoa_to_sheet(
+    processedData.map((phoneNumber) => [phoneNumber])
+  );
 
-  csvStream.pipe(stream);
+  //
+  XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, 'ProcessedNumbers');
+
+  XLSX.writeFile(newWorkbook, outputFilePath);
+};
+
+const processExcelFile = (filePath: string, outputFilePath: string) => {
+  const workbook = XLSX.readFile(filePath);
+  let allProcessedNumbers: string[] = [];
 
   workbook.SheetNames.forEach((sheetName) => {
     const sheet = workbook.Sheets[sheetName];
     const processedNumbers = processSheet(sheet);
-    processedNumbers.forEach((number) =>
-      csvStream.write({ PhoneNumber: number })
-    );
+    allProcessedNumbers = allProcessedNumbers.concat(processedNumbers);
   });
 
-  csvStream.end();
+  saveToExcel(allProcessedNumbers, outputFilePath);
 };
 
-// Example usage
 const filePath = './target.xlsx';
-const csvFilePath = './output.csv';
+const csvFilePath = './output.xlsx';
 const countryCode = '+972';
 processExcelFile(filePath, csvFilePath);
